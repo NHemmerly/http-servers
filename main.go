@@ -1,24 +1,26 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
+	"log"
 	"net/http"
-	"sync/atomic"
+	"os"
+
+	"github.com/NHemmerly/http-servers/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
-type apiConfig struct {
-	fileserverHits atomic.Int32
-}
-
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg.fileserverHits.Add(1)
-		next.ServeHTTP(w, r)
-	})
-}
-
 func main() {
-	apiCfg := apiConfig{}
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Printf("could not open database: %s", err)
+		os.Exit(1)
+	}
+	dbQueries := database.New(db)
+	apiCfg := apiConfig{dB: dbQueries, platform: os.Getenv("PLATFORM")}
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	server := &http.Server{
@@ -34,24 +36,10 @@ func main() {
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetMetricsHandler)
+	mux.HandleFunc("POST /api/users", apiCfg.createUser)
+	mux.HandleFunc("POST /api/chirps", apiCfg.postChirps)
+	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
+	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirpById)
 
 	server.ListenAndServe()
-}
-
-func (cfg *apiConfig) getMetricsHandler(w http.ResponseWriter, req *http.Request) {
-	req.Header.Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	hits := fmt.Sprintf(`<html>
-  <body>
-    <h1>Welcome, Chirpy Admin</h1>
-    <p>Chirpy has been visited %d times!</p>
-  </body>
-</html>`, cfg.fileserverHits.Load())
-	w.Write([]byte(hits))
-}
-
-func (cfg *apiConfig) resetMetricsHandler(w http.ResponseWriter, req *http.Request) {
-	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	cfg.fileserverHits.Store(0)
 }
