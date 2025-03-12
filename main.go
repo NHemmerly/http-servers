@@ -34,10 +34,11 @@ func main() {
 		writer.Write([]byte("OK"))
 	})
 
-	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetMetricsHandler)
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
+	mux.HandleFunc("POST /api/login", apiCfg.loginUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.postChirps)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirpById)
 

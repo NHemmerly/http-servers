@@ -11,6 +11,17 @@ import (
 	"github.com/NHemmerly/http-servers/internal/database"
 )
 
+func decodeRequest(w http.ResponseWriter, req *http.Request, params *request) *request {
+	decoder := json.NewDecoder(req.Body)
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return nil
+	}
+	return params
+}
+
 func respondWithError(w http.ResponseWriter, code int, msg string) {
 	type returnVals struct {
 		Error string `json:"error"`

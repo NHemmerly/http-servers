@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/NHemmerly/http-servers/internal/auth"
 	"github.com/NHemmerly/http-servers/internal/database"
 	"github.com/google/uuid"
 )
@@ -38,6 +39,33 @@ type Chirp struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Body      string    `json:"body"`
 	UserId    uuid.UUID `json:"user_id"`
+}
+
+type request struct {
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
+	req := decodeRequest(w, r, &request{})
+	user, err := cfg.getUserByEmail(req.Email, r)
+	if err != nil {
+		log.Printf("user not found")
+		w.WriteHeader(401)
+		return
+	}
+	err = auth.CheckPasswordHash(req.Password, user.HashedPassword)
+	if err != nil {
+		log.Printf("incorrect email or password")
+		w.WriteHeader(401)
+		return
+	}
+	responseWithJson(w, 200, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
 }
 
 func (cfg *apiConfig) postChirps(w http.ResponseWriter, r *http.Request) {
@@ -114,18 +142,22 @@ func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) createUser(w http.ResponseWriter, req *http.Request) {
-	type request struct {
-		Email string `json:"email"`
+	params := decodeRequest(w, req, &request{})
+	if params.Password == "" {
+		log.Printf("No password provided")
+		w.WriteHeader(400)
+		return
 	}
-	decoder := json.NewDecoder(req.Body)
-	params := request{}
-	err := decoder.Decode(&params)
+	hash, err := auth.HashPassword(params.Password)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
+		log.Printf("could not hash password")
 		w.WriteHeader(500)
 		return
 	}
-	user, err := cfg.dB.CreateUser(req.Context(), params.Email)
+	user, err := cfg.dB.CreateUser(req.Context(), database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hash,
+	})
 	if err != nil {
 		log.Printf("could not create user: %s", err)
 		return
