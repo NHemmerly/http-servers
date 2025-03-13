@@ -17,6 +17,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	dB             *database.Queries
 	platform       string
+	secret         string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -31,6 +32,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 type Chirp struct {
@@ -42,8 +44,9 @@ type Chirp struct {
 }
 
 type request struct {
-	Password string `json:"password"`
-	Email    string `json:"email"`
+	Password         string `json:"password"`
+	Email            string `json:"email"`
+	ExpiresInSeconds int    `json:"expires_in_seconds"`
 }
 
 func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
@@ -60,18 +63,29 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
+	parseExpiration(req)
+	duration, err := time.ParseDuration(fmt.Sprintf("%ds", req.ExpiresInSeconds))
+	if err != nil {
+		log.Printf("could not parse time: %s", err)
+		return
+	}
+	token, err := auth.MakeJWT(user.ID, cfg.secret, duration)
+	if err != nil {
+		log.Printf("could not create jwt token")
+		return
+	}
 	responseWithJson(w, 200, User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     token,
 	})
 }
 
 func (cfg *apiConfig) postChirps(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserId uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -81,12 +95,26 @@ func (cfg *apiConfig) postChirps(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
+	// bearer and token auth
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("could not get bearer: %s", err)
+		return
+	}
+	uuid, err := auth.ValidateJWT(bearer, cfg.secret)
+	if err != nil {
+		log.Printf("could not validate jwt: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	log.Printf("%v", uuid)
+	// chirp length verification
 	if len(params.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
 	chirp, err := cfg.dB.CreateChirp(r.Context(), database.CreateChirpParams{
-		UserID: params.UserId,
+		UserID: uuid,
 		Body:   params.Body,
 	})
 	if err != nil {

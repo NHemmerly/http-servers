@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 	dbQueries := database.New(db)
-	apiCfg := apiConfig{dB: dbQueries, platform: os.Getenv("PLATFORM")}
+	apiCfg := apiConfig{dB: dbQueries, platform: os.Getenv("PLATFORM"), secret: os.Getenv("SECRET")}
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	server := &http.Server{

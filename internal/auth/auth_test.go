@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,6 +83,22 @@ func TestGetBearerToken(t *testing.T) {
 		want        bool
 	}{
 		{"header works", "Authorization", "Bearer tokenstring", true},
+		{"header not there", "Authorization", "", false},
 	}
-
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			header := make(http.Header)
+			header.Add(test.headerKey, test.headerValue)
+			tokenString := strings.Split(test.headerValue, " ")
+			testVal, err := GetBearerToken(header)
+			if (err != nil) == test.want {
+				t.Errorf("could not get bearer token")
+			}
+			if len(tokenString) > 1 {
+				if (testVal != tokenString[1]) == test.want {
+					t.Errorf("%v does not equal %v to equal %v", testVal, tokenString[1], test.want)
+				}
+			}
+		})
+	}
 }

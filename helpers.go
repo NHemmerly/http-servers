@@ -11,6 +11,14 @@ import (
 	"github.com/NHemmerly/http-servers/internal/database"
 )
 
+func parseExpiration(r *request) {
+	if r.ExpiresInSeconds == 0 {
+		r.ExpiresInSeconds = 3600
+	} else if r.ExpiresInSeconds > 3600 {
+		r.ExpiresInSeconds = 3600
+	}
+}
+
 func decodeRequest(w http.ResponseWriter, req *http.Request, params *request) *request {
 	decoder := json.NewDecoder(req.Body)
 	err := decoder.Decode(&params)

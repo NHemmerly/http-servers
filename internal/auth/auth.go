@@ -68,6 +68,9 @@ func GetBearerToken(headers http.Header) (string, error) {
 		return "", fmt.Errorf("authorization header not found")
 	} else {
 		tokenString := strings.Split(bearer, " ")
+		if len(tokenString) < 1 {
+			return "", fmt.Errorf("no bearer token found")
+		}
 		return tokenString[1], nil
 	}
 }
