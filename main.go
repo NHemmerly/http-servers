@@ -41,6 +41,8 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirpById)
+	mux.HandleFunc("POST /api/refresh", apiCfg.postRefreshToken)
+	mux.HandleFunc("POST /api/revoke", apiCfg.revokeRefreshToken)
 
 	server.ListenAndServe()
 }

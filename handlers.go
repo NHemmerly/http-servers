@@ -28,11 +28,12 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 type Chirp struct {
@@ -43,10 +44,53 @@ type Chirp struct {
 	UserId    uuid.UUID `json:"user_id"`
 }
 
+type token struct {
+	Token string `json:"token"`
+}
+
 type request struct {
-	Password         string `json:"password"`
-	Email            string `json:"email"`
-	ExpiresInSeconds int    `json:"expires_in_seconds"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+func (cfg *apiConfig) revokeRefreshToken(w http.ResponseWriter, r *http.Request) {
+	refresh, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("could not retrieve refresh token: %s", err)
+		return
+	}
+	if err = cfg.dB.RevokeToken(r.Context(), refresh); err != nil {
+		log.Printf("could not revoke refresh token: %s", err)
+	}
+	responseWithJson(w, 204, nil)
+}
+
+func (cfg *apiConfig) postRefreshToken(w http.ResponseWriter, r *http.Request) {
+	refresh, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("could not retrieve refresh token: %s", err)
+		return
+	}
+	refreshToken, err := cfg.dB.GetRefreshToken(r.Context(), refresh)
+	if err != nil {
+		log.Printf("Refresh token does not exist: %s", err)
+		respondWithError(w, 401, "Invalid Token")
+		return
+	}
+	currentTime := time.Now()
+	if currentTime.Sub(refreshToken.ExpiresAt) >= 0 || refreshToken.RevokedAt.Valid {
+		log.Printf("Refresh token expired")
+		respondWithError(w, 401, "Invalid Token")
+		return
+	}
+	newAccess, err := auth.MakeJWT(refreshToken.UserID, cfg.secret, time.Hour)
+	if err != nil {
+		log.Printf("could not make new jwt: %s", err)
+	}
+	responseWithJson(w, 200, token{
+		Token: newAccess,
+	})
+
 }
 
 func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
@@ -63,23 +107,25 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
-	parseExpiration(req)
-	duration, err := time.ParseDuration(fmt.Sprintf("%ds", req.ExpiresInSeconds))
-	if err != nil {
-		log.Printf("could not parse time: %s", err)
-		return
-	}
-	token, err := auth.MakeJWT(user.ID, cfg.secret, duration)
+	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Hour)
 	if err != nil {
 		log.Printf("could not create jwt token")
 		return
 	}
+	newRefToken, err := cfg.dB.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:  auth.MakeRefreshToken(),
+		UserID: user.ID,
+	})
+	if err != nil {
+		log.Printf("could not create RefreshToken: %s", err)
+	}
 	responseWithJson(w, 200, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: newRefToken.Token,
 	})
 }
 
@@ -103,11 +149,11 @@ func (cfg *apiConfig) postChirps(w http.ResponseWriter, r *http.Request) {
 	}
 	uuid, err := auth.ValidateJWT(bearer, cfg.secret)
 	if err != nil {
+		log.Printf("%s", uuid)
 		log.Printf("could not validate jwt: %s", err)
 		respondWithError(w, 401, "Unauthorized")
 		return
 	}
-	log.Printf("%v", uuid)
 	// chirp length verification
 	if len(params.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")

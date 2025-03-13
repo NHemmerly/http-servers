@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +12,13 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func MakeRefreshToken() string {
+	seed := make([]byte, 32)
+	rand.Read(seed)
+	hexString := hex.EncodeToString(seed)
+	return hexString
+}
 
 func HashPassword(pass string) (string, error) {
 	pword, err := bcrypt.GenerateFromPassword([]byte(pass), 10)
