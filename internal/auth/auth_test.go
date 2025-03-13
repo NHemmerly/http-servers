@@ -39,3 +39,15 @@ func TestValidateJWT(t *testing.T) {
 		t.Errorf("RightID %v does not match original id %v", rightID, id)
 	}
 }
+
+func TestGetBearerToken(t *testing.T) {
+	var tests = []struct {
+		name        string
+		headerKey   string
+		headerValue string
+		want        bool
+	}{
+		{"header works", "Authorization", "Bearer tokenstring", true},
+	}
+
+}
