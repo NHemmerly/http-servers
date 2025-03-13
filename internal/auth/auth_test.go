@@ -72,3 +72,15 @@ func TestValidateJWT(t *testing.T) {
 	}
 
 }
+
+func TestGetBearerToken(t *testing.T) {
+	var tests = []struct {
+		name        string
+		headerKey   string
+		headerValue string
+		want        bool
+	}{
+		{"header works", "Authorization", "Bearer tokenstring", true},
+	}
+
+}
