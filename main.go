@@ -43,6 +43,8 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirpById)
 	mux.HandleFunc("POST /api/refresh", apiCfg.postRefreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeRefreshToken)
+	mux.HandleFunc("PUT /api/users", apiCfg.updateLogin)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
 
 	server.ListenAndServe()
 }

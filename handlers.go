@@ -47,6 +47,84 @@ type token struct {
 	Token string `json:"token"`
 }
 
+func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
+	access, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "no access token")
+		return
+	}
+	user_id, err := auth.ValidateJWT(access, cfg.secret)
+	if err != nil {
+		log.Printf("could not validate user: %s", err)
+		respondWithError(w, http.StatusUnauthorized, "unauthorized user")
+		return
+	}
+	chirpId, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not parse path")
+		return
+	}
+	chirp, err := cfg.dB.GetChirpByID(r.Context(), chirpId)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "chirp not found")
+		return
+	}
+	if chirp.UserID != user_id {
+		respondWithError(w, http.StatusForbidden, "Unauthorized")
+		return
+	}
+	if err := cfg.dB.DeleteChirp(r.Context(), database.DeleteChirpParams{
+		ID:     chirpId,
+		UserID: user_id,
+	}); err != nil {
+		respondWithError(w, http.StatusForbidden, "Unauthorized")
+		return
+	}
+	responseWithJson(w, http.StatusNoContent, "Chirp deleted")
+}
+
+func (cfg *apiConfig) updateLogin(w http.ResponseWriter, r *http.Request) {
+	access, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("could not retrieve access token: %s", err)
+		respondWithError(w, http.StatusUnauthorized, "no access token")
+		return
+	}
+	var creds login
+	if err := creds.decodeRequest(w, r); err != nil {
+		log.Printf("could not decode request: %s", err)
+		respondWithError(w, http.StatusInternalServerError, "server error")
+		return
+	}
+	uuid, err := auth.ValidateJWT(access, cfg.secret)
+	if err != nil {
+		log.Printf("could not validate user: %s", err)
+		respondWithError(w, http.StatusUnauthorized, "unauthorized user")
+		return
+	}
+	hashed, err := auth.HashPassword(creds.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not hash password")
+		return
+	}
+	user, err := cfg.dB.UpdateCreds(r.Context(), database.UpdateCredsParams{
+		HashedPassword: hashed,
+		Email:          creds.Email,
+		ID:             uuid,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not update db")
+		return
+	}
+	responseWithJson(w, http.StatusOK, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
+
+}
+
 func (cfg *apiConfig) revokeRefreshToken(w http.ResponseWriter, r *http.Request) {
 	refresh, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -55,6 +133,7 @@ func (cfg *apiConfig) revokeRefreshToken(w http.ResponseWriter, r *http.Request)
 	}
 	if err = cfg.dB.RevokeToken(r.Context(), refresh); err != nil {
 		log.Printf("could not revoke refresh token: %s", err)
+		return
 	}
 	responseWithJson(w, 204, nil)
 }
@@ -192,8 +271,8 @@ func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 	}
 	chirp, err := cfg.dB.GetChirpByID(r.Context(), chirpId)
 	if err != nil {
-		log.Printf("chirp not found: %s", err)
 		respondWithError(w, 404, "chirp not found")
+		return
 	}
 	responseWithJson(w, 200, Chirp{
 		ID:        chirp.ID,
