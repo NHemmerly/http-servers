@@ -17,6 +17,7 @@ type apiConfig struct {
 	dB             *database.Queries
 	platform       string
 	secret         string
+	polka          string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -33,6 +34,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type Chirp struct {
@@ -45,6 +47,37 @@ type Chirp struct {
 
 type token struct {
 	Token string `json:"token"`
+}
+
+func (cfg *apiConfig) upgradeChirpyRed(w http.ResponseWriter, r *http.Request) {
+	var upgrade upgrade
+	if err := upgrade.decodeRequest(w, r); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "server error")
+		return
+	}
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "could not find api key")
+		return
+	}
+	if apiKey != cfg.polka {
+		respondWithError(w, http.StatusUnauthorized, "wrong api key")
+		return
+	}
+	user_id, err := uuid.Parse(upgrade.Data.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not parse path")
+		return
+	}
+	if upgrade.Event != "user.upgraded" {
+		respondWithError(w, http.StatusNoContent, "ignored event")
+		return
+	}
+	if err := cfg.dB.UpgradeUser(r.Context(), user_id); err != nil {
+		respondWithError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	respondWithError(w, http.StatusNoContent, "user updated")
 }
 
 func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
@@ -117,10 +150,11 @@ func (cfg *apiConfig) updateLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	responseWithJson(w, http.StatusOK, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
 
 }
@@ -203,6 +237,7 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		Email:        user.Email,
 		Token:        token,
 		RefreshToken: newRefToken.Token,
+		IsChirpyRed:  user.IsChirpyRed,
 	})
 }
 
@@ -306,10 +341,11 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	responseWithJson(w, 201, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email})
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed})
 
 }
 

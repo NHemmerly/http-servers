@@ -20,7 +20,12 @@ func main() {
 		os.Exit(1)
 	}
 	dbQueries := database.New(db)
-	apiCfg := apiConfig{dB: dbQueries, platform: os.Getenv("PLATFORM"), secret: os.Getenv("SECRET")}
+	apiCfg := apiConfig{
+		dB:       dbQueries,
+		platform: os.Getenv("PLATFORM"),
+		secret:   os.Getenv("SECRET"),
+		polka:    os.Getenv("POLKA_KEY"),
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	server := &http.Server{
@@ -35,16 +40,17 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetMetricsHandler)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
+	mux.HandleFunc("PUT /api/users", apiCfg.updateLogin)
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
 	mux.HandleFunc("POST /api/login", apiCfg.loginUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.postChirps)
-	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirpById)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
 	mux.HandleFunc("POST /api/refresh", apiCfg.postRefreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeRefreshToken)
-	mux.HandleFunc("PUT /api/users", apiCfg.updateLogin)
-	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.upgradeChirpyRed)
 
 	server.ListenAndServe()
 }

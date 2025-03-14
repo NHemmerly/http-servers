@@ -9,6 +9,13 @@ import (
 	"github.com/NHemmerly/http-servers/internal/database"
 )
 
+type upgrade struct {
+	Event string `json:"event"`
+	Data  struct {
+		UserID string `json:"user_id"`
+	} `json:"data"`
+}
+
 type login struct {
 	Password string `json:"password"`
 	Email    string `json:"email"`
@@ -35,6 +42,10 @@ func (l *login) decodeRequest(w http.ResponseWriter, req *http.Request) error {
 
 func (p *parameters) decodeRequest(w http.ResponseWriter, req *http.Request) error {
 	return decodeRequest(w, req, p)
+}
+
+func (u *upgrade) decodeRequest(w http.ResponseWriter, req *http.Request) error {
+	return decodeRequest(w, req, u)
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {

@@ -13,6 +13,21 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func GetAPIKey(headers http.Header) (string, error) {
+	if bearer := headers.Get("Authorization"); bearer == "" {
+		return "", fmt.Errorf("authorization header not found")
+	} else {
+		tokenString := strings.Split(bearer, " ")
+		if len(tokenString) < 1 {
+			return "", fmt.Errorf("no api key found")
+		}
+		if strings.ToLower(tokenString[0]) != "apikey" {
+			return "", fmt.Errorf("no api key found")
+		}
+		return tokenString[1], nil
+	}
+}
+
 func MakeRefreshToken() string {
 	seed := make([]byte, 32)
 	rand.Read(seed)
