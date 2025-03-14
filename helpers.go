@@ -5,21 +5,36 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"slices"
-	"strings"
 
 	"github.com/NHemmerly/http-servers/internal/database"
 )
 
-func decodeRequest(w http.ResponseWriter, req *http.Request, params *request) *request {
+type login struct {
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+type parameters struct {
+	Body string `json:"body"`
+}
+
+func decodeRequest(w http.ResponseWriter, req *http.Request, form interface{}) error {
 	decoder := json.NewDecoder(req.Body)
-	err := decoder.Decode(&params)
+	err := decoder.Decode(form)
 	if err != nil {
 		log.Printf("Error decoding parameters: %s", err)
 		w.WriteHeader(500)
-		return nil
+		return err
 	}
-	return params
+	return nil
+}
+
+func (l *login) decodeRequest(w http.ResponseWriter, req *http.Request) error {
+	return decodeRequest(w, req, l)
+}
+
+func (p *parameters) decodeRequest(w http.ResponseWriter, req *http.Request) error {
+	return decodeRequest(w, req, p)
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
@@ -50,20 +65,6 @@ func responseWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(dat)
-}
-
-func cleanDirty(w http.ResponseWriter, code int, msg string) {
-	words := strings.Split(msg, " ")
-	badWords := []string{"kerfuffle", "sharbert", "fornax"}
-	for i, word := range words {
-		if slices.Contains(badWords, strings.ToLower(word)) {
-			words[i] = "****"
-		}
-	}
-	resp := strings.Join(words, " ")
-	responseWithJson(w, code, map[string]string{
-		"cleaned_body": resp,
-	})
 }
 
 func (cfg *apiConfig) getUserByEmail(email string, r *http.Request) (*database.User, error) {

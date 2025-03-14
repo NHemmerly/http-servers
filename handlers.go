@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -48,11 +47,6 @@ type token struct {
 	Token string `json:"token"`
 }
 
-type request struct {
-	Password string `json:"password"`
-	Email    string `json:"email"`
-}
-
 func (cfg *apiConfig) revokeRefreshToken(w http.ResponseWriter, r *http.Request) {
 	refresh, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -94,22 +88,24 @@ func (cfg *apiConfig) postRefreshToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
-	req := decodeRequest(w, r, &request{})
-	user, err := cfg.getUserByEmail(req.Email, r)
-	if err != nil {
-		log.Printf("user not found")
-		w.WriteHeader(401)
+	var req login
+	if err := req.decodeRequest(w, r); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	err = auth.CheckPasswordHash(req.Password, user.HashedPassword)
+	user, err := cfg.getUserByEmail(req.Email, r)
 	if err != nil {
-		log.Printf("incorrect email or password")
-		w.WriteHeader(401)
+		respondWithError(w, 401, "user not found")
+		return
+	}
+	if err = auth.CheckPasswordHash(req.Password, user.HashedPassword); err != nil {
+		respondWithError(w, 401, "incorrect email or password")
 		return
 	}
 	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Hour)
 	if err != nil {
 		log.Printf("could not create jwt token")
+		respondWithError(w, http.StatusInternalServerError, "server error")
 		return
 	}
 	newRefToken, err := cfg.dB.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
@@ -118,6 +114,8 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("could not create RefreshToken: %s", err)
+		respondWithError(w, http.StatusInternalServerError, "server error")
+		return
 	}
 	responseWithJson(w, 200, User{
 		ID:           user.ID,
@@ -130,17 +128,8 @@ func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) postChirps(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Body string `json:"body"`
-	}
-	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
-		return
-	}
+	params.decodeRequest(w, r)
 	// bearer and token auth
 	bearer, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -216,7 +205,8 @@ func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) createUser(w http.ResponseWriter, req *http.Request) {
-	params := decodeRequest(w, req, &request{})
+	params := login{}
+	params.decodeRequest(w, req)
 	if params.Password == "" {
 		log.Printf("No password provided")
 		w.WriteHeader(400)
