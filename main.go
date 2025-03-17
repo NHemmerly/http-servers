@@ -5,11 +5,20 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	"github.com/NHemmerly/http-servers/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
+
+type apiConfig struct {
+	fileserverHits atomic.Int32
+	dB             *database.Queries
+	platform       string
+	secret         string
+	polka          string
+}
 
 func main() {
 	godotenv.Load()
