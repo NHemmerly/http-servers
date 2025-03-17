@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/NHemmerly/http-servers/internal/auth"
@@ -93,10 +94,33 @@ func (cfg *apiConfig) postChirps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.dB.GetChirps(r.Context())
-	if err != nil {
-		log.Printf("could not retrieve all users: %s", err)
-		return
+	var chirps []database.Chirp
+	var descend bool
+	userIdString := r.URL.Query().Get("author_id")
+	sortString := r.URL.Query().Get("sort")
+	if sortString == "desc" {
+		descend = true
+	} else {
+		descend = false
+	}
+	if userIdString != "" {
+		userId, err := uuid.Parse(userIdString)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "server error")
+			return
+		}
+		chirps, err = cfg.dB.GetChirpsByUser(r.Context(), userId)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "user chirps not found")
+			return
+		}
+	} else {
+		var err error
+		chirps, err = cfg.dB.GetChirps(r.Context())
+		if err != nil {
+			log.Printf("could not retrieve all users: %s", err)
+			return
+		}
 	}
 	var chirpArray []Chirp
 	for _, chirp := range chirps {
@@ -107,6 +131,9 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 			Body:      chirp.Body,
 			UserId:    chirp.UserID,
 		})
+	}
+	if descend {
+		sort.Slice(chirpArray, func(i, j int) bool { return chirpArray[i].CreatedAt > chirpArray[j].CreatedAt })
 	}
 	responseWithJson(w, 200, chirpArray)
 }
