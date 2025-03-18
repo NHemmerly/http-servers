@@ -133,7 +133,7 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if descend {
-		sort.Slice(chirpArray, func(i, j int) bool { return chirpArray[i].CreatedAt > chirpArray[j].CreatedAt })
+		sort.Slice(chirpArray, func(i, j int) bool { return chirpArray[i].CreatedAt.After(chirpArray[j].CreatedAt) })
 	}
 	responseWithJson(w, 200, chirpArray)
 }
